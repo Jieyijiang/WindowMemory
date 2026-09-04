@@ -11,8 +11,8 @@ using System.Windows;
 [assembly: AssemblyCompany("Personal Utility")]
 [assembly: AssemblyProduct("Window Memory")]
 [assembly: AssemblyCopyright("Copyright © 2026")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.0.1.0")]
+[assembly: AssemblyFileVersion("1.0.1.0")]
 
 namespace WindowMemory
 {
@@ -129,6 +129,7 @@ namespace WindowMemory
                 Assert(score >= 100, "窗口匹配评分异常");
 
                 AppState state = new AppState();
+                Assert(!state.Preferences.MinimizeToTray, "默认应保留普通任务栏按钮");
                 state.Rules.Add(new WindowRule { Name = "测试规则", Matcher = matcher });
                 state.Layouts.Add(new LayoutProfile { Name = "布局 1", Hotkey = "Ctrl+1" });
                 DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(AppState));

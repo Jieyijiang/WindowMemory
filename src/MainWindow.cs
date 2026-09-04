@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Drawing.Drawing2D;
+using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
@@ -43,6 +44,7 @@ namespace WindowMemory
         private ComboBox _scanInterval;
         private CheckBox _autoStart;
         private CheckBox _paused;
+        private CheckBox _minimizeToTray;
         private bool _allowExit;
         private bool _loadingSettings;
         private int _layoutRestoreBusy;
@@ -67,6 +69,9 @@ namespace WindowMemory
             MinHeight = 650;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             Background = Ui.Brush("BackgroundBrush");
+            ShowInTaskbar = true;
+            using (Stream iconStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("WindowMemory.app.ico"))
+                if (iconStream != null) Icon = BitmapFrame.Create(iconStream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
 
             BuildUi();
             if (!previewOnly) CreateTray();
@@ -379,6 +384,11 @@ namespace WindowMemory
             _paused.Unchecked += PauseChanged;
             general.Children.Add(SettingRow("自动恢复", "暂停后仍可手动还原布局", _paused));
 
+            _minimizeToTray = new CheckBox { Content = "最小化或关闭时收进托盘", HorizontalAlignment = HorizontalAlignment.Right };
+            _minimizeToTray.Checked += MinimizeToTrayChanged;
+            _minimizeToTray.Unchecked += MinimizeToTrayChanged;
+            general.Children.Add(SettingRow("任务栏行为", "开启后后台运行，但普通任务栏按钮会隐藏", _minimizeToTray));
+
             _autoStart = new CheckBox { Content = "登录 Windows 后自动运行", HorizontalAlignment = HorizontalAlignment.Right };
             _autoStart.Checked += AutoStartChanged;
             _autoStart.Unchecked += AutoStartChanged;
@@ -455,6 +465,12 @@ namespace WindowMemory
 
         private void OnSourceInitialized(object sender, EventArgs e)
         {
+            if (_trayIcon != null)
+            {
+                IntPtr handle = new WindowInteropHelper(this).Handle;
+                SendMessage(handle, 0x0080, IntPtr.Zero, _trayIcon.Handle);
+                SendMessage(handle, 0x0080, new IntPtr(1), _trayIcon.Handle);
+            }
             _hotkeys.Attach(this);
             RegisterHotkeys();
         }
@@ -493,7 +509,9 @@ namespace WindowMemory
 
         private void CreateTray()
         {
-            _trayIcon = CreateIcon();
+            _trayIcon = Drawing.Icon.ExtractAssociatedIcon(Assembly.GetExecutingAssembly().Location);
+            if (_trayIcon == null) _trayIcon = (Drawing.Icon)Drawing.SystemIcons.Application.Clone();
+            Icon = Imaging.CreateBitmapSourceFromHIcon(_trayIcon.Handle, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
             _tray = new Forms.NotifyIcon
             {
                 Icon = _trayIcon,
@@ -502,30 +520,6 @@ namespace WindowMemory
             };
             _tray.DoubleClick += delegate { Dispatcher.BeginInvoke(new Action(ShowMainWindow)); };
             RebuildTrayMenu();
-        }
-
-        private Drawing.Icon CreateIcon()
-        {
-            Drawing.Bitmap bitmap = new Drawing.Bitmap(64, 64);
-            using (Drawing.Graphics g = Drawing.Graphics.FromImage(bitmap))
-            {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.Clear(Drawing.Color.Transparent);
-                using (Drawing.Brush background = new Drawing.SolidBrush(Drawing.Color.FromArgb(14, 23, 40)))
-                    g.FillEllipse(background, 2, 2, 60, 60);
-                using (Drawing.Pen ring = new Drawing.Pen(Drawing.Color.FromArgb(21, 185, 129), 4))
-                    g.DrawEllipse(ring, 5, 5, 54, 54);
-                using (Drawing.Brush window = new Drawing.SolidBrush(Drawing.Color.FromArgb(89, 227, 180)))
-                {
-                    g.FillRoundedRectangle(window, new Drawing.RectangleF(16, 18, 19, 28), 4);
-                    g.FillRoundedRectangle(window, new Drawing.RectangleF(38, 18, 10, 28), 4);
-                }
-            }
-            IntPtr handle = bitmap.GetHicon();
-            Drawing.Icon icon = (Drawing.Icon)Drawing.Icon.FromHandle(handle).Clone();
-            DestroyIcon(handle);
-            bitmap.Dispose();
-            return icon;
         }
 
         private void RebuildTrayMenu()
@@ -784,6 +778,13 @@ namespace WindowMemory
             SaveAndRefresh(paused ? "自动恢复已暂停" : "自动恢复已继续");
         }
 
+        private void MinimizeToTrayChanged(object sender, RoutedEventArgs e)
+        {
+            if (_loadingSettings) return;
+            _state.Preferences.MinimizeToTray = _minimizeToTray.IsChecked == true;
+            SaveAndRefresh(_state.Preferences.MinimizeToTray ? "已开启最小化到托盘" : "任务栏图标将保持显示");
+        }
+
         private void AutoStartChanged(object sender, RoutedEventArgs e)
         {
             if (_loadingSettings) return;
@@ -842,6 +843,7 @@ namespace WindowMemory
             try
             {
                 if (_paused != null) _paused.IsChecked = _state.Preferences.AutoRestorePaused;
+                if (_minimizeToTray != null) _minimizeToTray.IsChecked = _state.Preferences.MinimizeToTray;
                 if (_autoStart != null) _autoStart.IsChecked = StartupService.IsEnabled();
                 if (_scanInterval != null)
                 {
@@ -896,7 +898,8 @@ namespace WindowMemory
             _tray.ShowBalloonTip(2600);
         }
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto)] private static extern bool DestroyIcon(IntPtr handle);
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr parameter, IntPtr value);
 
         private sealed class IntervalOption
         {
@@ -907,20 +910,4 @@ namespace WindowMemory
         }
     }
 
-    internal static class DrawingExtensions
-    {
-        public static void FillRoundedRectangle(this Drawing.Graphics graphics, Drawing.Brush brush, Drawing.RectangleF bounds, float radius)
-        {
-            float diameter = radius * 2;
-            using (GraphicsPath path = new GraphicsPath())
-            {
-                path.AddArc(bounds.Left, bounds.Top, diameter, diameter, 180, 90);
-                path.AddArc(bounds.Right - diameter, bounds.Top, diameter, diameter, 270, 90);
-                path.AddArc(bounds.Right - diameter, bounds.Bottom - diameter, diameter, diameter, 0, 90);
-                path.AddArc(bounds.Left, bounds.Bottom - diameter, diameter, diameter, 90, 90);
-                path.CloseFigure();
-                graphics.FillPath(brush, path);
-            }
-        }
-    }
 }

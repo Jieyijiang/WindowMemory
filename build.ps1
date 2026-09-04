@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $sourceDir = Join-Path $projectRoot 'src'
 $distDir = Join-Path $projectRoot 'dist'
+$iconPath = Join-Path $projectRoot 'assets\app.ico'
 $compilerCandidates = @(
     'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Current\Bin\Roslyn\csc.exe',
     'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\Roslyn\csc.exe',
@@ -19,6 +20,10 @@ $wpf = Join-Path $framework 'WPF'
 
 if (-not $compiler) {
     throw '找不到 Visual Studio 2022 Roslyn C# 编译器，请先安装 Visual Studio Build Tools 的 .NET 桌面生成工具。'
+}
+
+if (-not (Test-Path -LiteralPath $iconPath)) {
+    & (Join-Path $projectRoot 'tools\GenerateIcon.ps1') -OutputPath $iconPath
 }
 
 New-Item -ItemType Directory -Path $distDir -Force | Out-Null
@@ -47,6 +52,8 @@ $arguments = @(
     '/optimize+',
     '/debug:pdbonly',
     '/langversion:latest',
+    ('/win32icon:' + $iconPath),
+    ('/resource:' + $iconPath + ',WindowMemory.app.ico'),
     ('/win32manifest:' + (Join-Path $projectRoot 'app.manifest')),
     ('/out:' + $output)
 )

@@ -115,6 +115,11 @@ namespace WindowMemory
             if (state.Layouts == null) state.Layouts = new System.Collections.Generic.List<LayoutProfile>();
             if (string.IsNullOrWhiteSpace(state.Preferences.CaptureHotkey)) state.Preferences.CaptureHotkey = "Ctrl+Alt+Z";
             if (state.Preferences.ScanIntervalMs < 250) state.Preferences.ScanIntervalMs = 700;
+            if (state.SchemaVersion < 2)
+            {
+                state.Preferences.MinimizeToTray = false;
+                state.SchemaVersion = 2;
+            }
         }
     }
 }
