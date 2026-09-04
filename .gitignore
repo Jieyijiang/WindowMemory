@@ -1,0 +1,20 @@
+# Build and release output
+dist/
+*.zip
+*.pdb
+preview*.png
+design-system/
+
+# Portable runtime data
+Data/
+settings.json
+settings.json.bak
+crash.log
+
+# Visual Studio and local files
+.vs/
+bin/
+obj/
+*.user
+*.suo
+*.tmp

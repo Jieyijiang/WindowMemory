@@ -1,0 +1,41 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        shell: pwsh
+        run: .\build.ps1
+
+      - name: Self-test
+        shell: pwsh
+        run: |
+          $test = Start-Process -FilePath .\dist\WindowMemory.exe -ArgumentList '--self-test' -Wait -PassThru
+          if ($test.ExitCode -ne 0) { throw "Self-test failed with exit code $($test.ExitCode)" }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $archive = "WindowMemory-$env:GITHUB_REF_NAME-portable.zip"
+          Compress-Archive -LiteralPath .\dist\WindowMemory.exe,.\dist\portable.flag,.\dist\README.md -DestinationPath $archive
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+          "$hash  $archive" | Set-Content -LiteralPath "$archive.sha256" -Encoding ascii
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $archive = "WindowMemory-$env:GITHUB_REF_NAME-portable.zip"
+          gh release create $env:GITHUB_REF_NAME $archive "$archive.sha256" --generate-notes --title "Window Memory $env:GITHUB_REF_NAME"
