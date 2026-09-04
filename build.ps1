@@ -10,6 +10,10 @@ $compilerCandidates = @(
     'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\Roslyn\csc.exe'
 )
 $compiler = $compilerCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+if (-not $compiler -and (Test-Path -LiteralPath $vswhere)) {
+    $compiler = & $vswhere -latest -products '*' -find 'MSBuild\**\Bin\Roslyn\csc.exe' | Select-Object -First 1
+}
 $framework = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319'
 $wpf = Join-Path $framework 'WPF'
 
