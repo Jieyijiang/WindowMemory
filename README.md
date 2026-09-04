@@ -1,8 +1,14 @@
 # Window Memory
 
+[![Build](https://github.com/Jieyijiang/WindowMemory/actions/workflows/build.yml/badge.svg)](https://github.com/Jieyijiang/WindowMemory/actions/workflows/build.yml)
+
 一个轻量、便携的 Windows 窗口与布局记忆工具。所有配置只保存在本机，不联网、不上传窗口标题或使用数据。
 
 ![Window Memory 概览](docs/images/overview.png)
+
+## 下载
+
+前往 [Latest Release](https://github.com/Jieyijiang/WindowMemory/releases/latest) 下载 `WindowMemory-版本号-portable.zip`，解压后运行 `WindowMemory.exe`。如果只是使用软件，不要下载 GitHub 自动提供的 “Source code” 压缩包。
 
 ## 核心功能
 
