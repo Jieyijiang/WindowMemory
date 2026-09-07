@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using System.Runtime.Serialization.Json;
@@ -11,8 +12,8 @@ using System.Windows;
 [assembly: AssemblyCompany("Personal Utility")]
 [assembly: AssemblyProduct("Window Memory")]
 [assembly: AssemblyCopyright("Copyright © 2026")]
-[assembly: AssemblyVersion("1.0.1.0")]
-[assembly: AssemblyFileVersion("1.0.1.0")]
+[assembly: AssemblyVersion("1.0.2.0")]
+[assembly: AssemblyFileVersion("1.0.2.0")]
 
 namespace WindowMemory
 {
@@ -23,6 +24,8 @@ namespace WindowMemory
         {
             bool selfTest = HasArgument(args, "--self-test");
             if (selfTest) return SelfTests.Run();
+            if (HasArgument(args, "--integration-test")) return SelfTests.RunIntegration();
+            if (HasArgument(args, "--test-window")) return SelfTests.RunTestWindow();
 
             string previewPath = ArgumentValue(args, "--render-preview=");
             if (!string.IsNullOrWhiteSpace(previewPath))
@@ -47,8 +50,16 @@ namespace WindowMemory
             {
                 if (!created)
                 {
-                    MessageBox.Show("Window Memory 已经在运行，请从系统托盘打开。", "Window Memory",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    try
+                    {
+                        using (EventWaitHandle activation = EventWaitHandle.OpenExisting(@"Local\WindowMemory.ShowMainWindow"))
+                            activation.Set();
+                    }
+                    catch
+                    {
+                        MessageBox.Show("Window Memory 已经在运行，但暂时无法唤回主窗口。", "Window Memory",
+                            MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
                     return 0;
                 }
 
@@ -56,8 +67,13 @@ namespace WindowMemory
                 {
                     Application app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
                     app.Resources.MergedDictionaries.Add(Theme.Create());
-                    MainWindow window = new MainWindow(HasArgument(args, "--background"));
-                    app.Run(window);
+                    bool activationCreated;
+                    using (EventWaitHandle activation = new EventWaitHandle(false, EventResetMode.AutoReset,
+                        @"Local\WindowMemory.ShowMainWindow", out activationCreated))
+                    {
+                        MainWindow window = new MainWindow(HasArgument(args, "--background"), false, activation);
+                        app.Run(window);
+                    }
                     return 0;
                 }
                 catch (Exception ex)
@@ -129,7 +145,24 @@ namespace WindowMemory
                 Assert(score >= 100, "窗口匹配评分异常");
 
                 AppState state = new AppState();
-                Assert(!state.Preferences.MinimizeToTray, "默认应保留普通任务栏按钮");
+                Assert(state.Preferences.MinimizeToTray, "默认应保持后台托盘运行");
+                WindowMatcher programMatcher = service.CreateProgramMatcher(new WindowDescriptor
+                {
+                    ProcessPath = @"C:\Tools\demo.exe",
+                    ProcessName = "demo",
+                    ClassName = "OldClass",
+                    Title = "旧标题"
+                });
+                Assert(programMatcher.TitleMode == TitleMatchMode.Ignore && string.IsNullOrEmpty(programMatcher.ClassName),
+                    "默认规则应按程序匹配并忽略标题和窗口类");
+                Assert(service.Matches(programMatcher, new WindowDescriptor
+                {
+                    ProcessPath = @"C:\Tools\demo.exe",
+                    ProcessName = "demo",
+                    ClassName = "NewClass",
+                    Title = "新标题"
+                }, out score), "程序绑定不应受标题或窗口类变化影响");
+                TestConfigMigration();
                 state.Rules.Add(new WindowRule { Name = "测试规则", Matcher = matcher });
                 state.Layouts.Add(new LayoutProfile { Name = "布局 1", Hotkey = "Ctrl+1" });
                 DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(AppState));
@@ -164,6 +197,131 @@ namespace WindowMemory
             catch
             {
                 return 2;
+            }
+        }
+
+        public static int RunIntegration()
+        {
+            Process child = null;
+            AutoRestoreEngine engine = null;
+            try
+            {
+                child = Process.Start(new ProcessStartInfo
+                {
+                    FileName = Assembly.GetExecutingAssembly().Location,
+                    Arguments = "--test-window",
+                    UseShellExecute = false
+                });
+                WindowService service = new WindowService();
+                WindowDescriptor probe = null;
+                for (int attempt = 0; attempt < 50 && probe == null; attempt++)
+                {
+                    Thread.Sleep(100);
+                    foreach (WindowDescriptor candidate in service.EnumerateWindows())
+                        if (candidate.Title == "WindowMemory 集成测试窗口") { probe = candidate; break; }
+                }
+                Assert(probe != null, "未找到集成测试窗口");
+
+                SavedPlacement target = service.CreatePlacement(probe);
+                target.ScaleWithMonitor = false;
+                target.X = probe.Bounds.Left + 140;
+                target.Y = probe.Bounds.Top + 90;
+                WindowRule rule = new WindowRule
+                {
+                    Name = "集成测试",
+                    Matcher = service.CreateProgramMatcher(probe),
+                    Placement = target,
+                    Enabled = true
+                };
+                engine = new AutoRestoreEngine(service);
+                engine.Update(new[] { rule }, 250, false);
+                engine.Start();
+
+                bool moved = false;
+                for (int attempt = 0; attempt < 30 && !moved; attempt++)
+                {
+                    Thread.Sleep(100);
+                    foreach (WindowDescriptor candidate in service.EnumerateWindows())
+                    {
+                        if (candidate.Handle == probe.Handle && Math.Abs(candidate.Bounds.Left - target.X) <= 2 &&
+                            Math.Abs(candidate.Bounds.Top - target.Y) <= 2)
+                        {
+                            moved = true;
+                            break;
+                        }
+                    }
+                }
+                Assert(moved, "自动恢复未实际移动测试窗口");
+                return 0;
+            }
+            catch
+            {
+                return 4;
+            }
+            finally
+            {
+                if (engine != null) engine.Dispose();
+                if (child != null && !child.HasExited) child.Kill();
+            }
+        }
+
+        public static int RunTestWindow()
+        {
+            Application app = new Application { ShutdownMode = ShutdownMode.OnMainWindowClose };
+            Window window = new Window
+            {
+                Title = "WindowMemory 集成测试窗口",
+                Width = 480,
+                Height = 320,
+                Left = 120,
+                Top = 120,
+                WindowStartupLocation = WindowStartupLocation.Manual,
+                ShowInTaskbar = false
+            };
+            System.Windows.Threading.DispatcherTimer timeout = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(10)
+            };
+            timeout.Tick += delegate { timeout.Stop(); window.Close(); };
+            timeout.Start();
+            app.Run(window);
+            return 0;
+        }
+
+        private static void TestConfigMigration()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "WindowMemory-test-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(directory);
+                AppState legacy = new AppState { SchemaVersion = 2 };
+                legacy.Preferences.MinimizeToTray = false;
+                legacy.Rules.Add(new WindowRule
+                {
+                    Matcher = new WindowMatcher
+                    {
+                        ProcessPath = @"C:\Tools\demo.exe",
+                        ProcessName = "demo",
+                        ClassName = "LegacyWindowClass",
+                        TitleMode = TitleMatchMode.Ignore
+                    }
+                });
+                string path = Path.Combine(directory, "settings.json");
+                using (FileStream stream = File.Create(path))
+                    new DataContractJsonSerializer(typeof(AppState)).WriteObject(stream, legacy);
+
+                ConfigService config = new ConfigService(directory);
+                AppState migrated = config.Load();
+                Assert(migrated.SchemaVersion == 3 && migrated.Preferences.MinimizeToTray,
+                    "旧配置没有升级为后台托盘模式");
+                Assert(string.IsNullOrEmpty(migrated.Rules[0].Matcher.ClassName),
+                    "旧的忽略标题规则没有升级为程序绑定");
+                string saved = File.ReadAllText(path);
+                Assert(saved.Contains("\"SchemaVersion\":3"), "升级后的配置没有写回磁盘");
+            }
+            finally
+            {
+                if (Directory.Exists(directory)) Directory.Delete(directory, true);
             }
         }
 

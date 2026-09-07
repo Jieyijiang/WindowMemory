@@ -12,8 +12,19 @@ namespace WindowMemory
         public string LastError { get; private set; }
 
         public ConfigService()
+            : this(null)
+        {
+        }
+
+        internal ConfigService(string dataDirectory)
         {
             LastError = string.Empty;
+            if (!string.IsNullOrWhiteSpace(dataDirectory))
+            {
+                DataDirectory = dataDirectory;
+                Directory.CreateDirectory(DataDirectory);
+                return;
+            }
             string appDirectory = AppDomain.CurrentDomain.BaseDirectory;
             string portableDirectory = Path.Combine(appDirectory, "Data");
             bool portableRequested = File.Exists(Path.Combine(appDirectory, "portable.flag")) || Directory.Exists(portableDirectory);
@@ -49,14 +60,17 @@ namespace WindowMemory
 
             try
             {
+                AppState state;
                 using (FileStream stream = File.OpenRead(ConfigPath))
                 {
                     DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(AppState));
-                    AppState state = serializer.ReadObject(stream) as AppState;
-                    if (state == null) return new AppState();
-                    Normalize(state);
-                    return state;
+                    state = serializer.ReadObject(stream) as AppState;
                 }
+                if (state == null) return new AppState();
+                int previousSchema = state.SchemaVersion;
+                Normalize(state);
+                if (state.SchemaVersion != previousSchema) Save(state);
+                return state;
             }
             catch (Exception ex)
             {
@@ -119,6 +133,18 @@ namespace WindowMemory
             {
                 state.Preferences.MinimizeToTray = false;
                 state.SchemaVersion = 2;
+            }
+            if (state.SchemaVersion < 3)
+            {
+                // 旧版本默认在关闭主窗口时退出，后台恢复也随之停止。
+                // v3 起默认常驻托盘，并将已有“忽略标题”规则升级为纯程序绑定。
+                state.Preferences.MinimizeToTray = true;
+                foreach (WindowRule rule in state.Rules)
+                {
+                    if (rule != null && rule.Matcher != null && rule.Matcher.TitleMode == TitleMatchMode.Ignore)
+                        rule.Matcher.ClassName = string.Empty;
+                }
+                state.SchemaVersion = 3;
             }
         }
     }

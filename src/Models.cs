@@ -25,7 +25,7 @@ namespace WindowMemory
 
         public AppState()
         {
-            SchemaVersion = 2;
+            SchemaVersion = 3;
             Preferences = new AppPreferences();
             Rules = new List<WindowRule>();
             Layouts = new List<LayoutProfile>();
@@ -45,7 +45,7 @@ namespace WindowMemory
         {
             CaptureHotkey = "Ctrl+Alt+Z";
             ScanIntervalMs = 700;
-            MinimizeToTray = false;
+            MinimizeToTray = true;
             AutoStart = false;
             AutoRestorePaused = false;
         }
@@ -66,7 +66,7 @@ namespace WindowMemory
             ProcessName = string.Empty;
             ClassName = string.Empty;
             TitleText = string.Empty;
-            TitleMode = TitleMatchMode.Exact;
+            TitleMode = TitleMatchMode.Ignore;
         }
 
         public WindowMatcher Clone()

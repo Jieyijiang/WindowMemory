@@ -36,6 +36,8 @@ namespace WindowMemory
                         _rules.Add(rule.Clone());
                 _interval = Math.Max(250, Math.Min(5000, interval));
                 _paused = paused;
+                // 规则或目标位置更新后，允许当前已打开的窗口立即重新应用。
+                _applied.Clear();
             }
             if (_timer != null) _timer.Change(_interval, _interval);
         }

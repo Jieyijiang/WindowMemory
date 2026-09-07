@@ -29,6 +29,10 @@ namespace WindowMemory
         private readonly Dictionary<string, FrameworkElement> _pages = new Dictionary<string, FrameworkElement>();
         private readonly Dictionary<string, Button> _navButtons = new Dictionary<string, Button>();
         private readonly bool _startHidden;
+        private readonly EventWaitHandle _activationEvent;
+        private RegisteredWaitHandle _activationRegistration;
+        private HwndSource _windowSource;
+        private uint _taskbarCreatedMessage;
         private Forms.NotifyIcon _tray;
         private Drawing.Icon _trayIcon;
         private Grid _contentHost;
@@ -49,13 +53,18 @@ namespace WindowMemory
         private bool _loadingSettings;
         private int _layoutRestoreBusy;
 
-        public MainWindow(bool startHidden) : this(startHidden, false)
+        public MainWindow(bool startHidden) : this(startHidden, false, null)
         {
         }
 
-        internal MainWindow(bool startHidden, bool previewOnly)
+        internal MainWindow(bool startHidden, bool previewOnly) : this(startHidden, previewOnly, null)
+        {
+        }
+
+        internal MainWindow(bool startHidden, bool previewOnly, EventWaitHandle activationEvent)
         {
             _startHidden = startHidden;
+            _activationEvent = activationEvent;
             _config = new ConfigService();
             _windows = new WindowService();
             _state = _config.Load();
@@ -82,6 +91,11 @@ namespace WindowMemory
             Closing += OnClosing;
             StateChanged += OnStateChanged;
             _engine.StatusChanged += OnEngineStatus;
+            if (_activationEvent != null)
+            {
+                _activationRegistration = ThreadPool.RegisterWaitForSingleObject(_activationEvent,
+                    delegate { Dispatcher.BeginInvoke(new Action(ShowMainWindow)); }, null, Timeout.Infinite, false);
+            }
         }
 
         internal void SavePreview(string path, string page)
@@ -465,9 +479,12 @@ namespace WindowMemory
 
         private void OnSourceInitialized(object sender, EventArgs e)
         {
+            IntPtr handle = new WindowInteropHelper(this).Handle;
+            _windowSource = HwndSource.FromHwnd(handle);
+            _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
+            if (_windowSource != null) _windowSource.AddHook(WindowMessageHook);
             if (_trayIcon != null)
             {
-                IntPtr handle = new WindowInteropHelper(this).Handle;
                 SendMessage(handle, 0x0080, IntPtr.Zero, _trayIcon.Handle);
                 SendMessage(handle, 0x0080, new IntPtr(1), _trayIcon.Handle);
             }
@@ -494,6 +511,8 @@ namespace WindowMemory
             }
             _engine.Dispose();
             _hotkeys.Dispose();
+            if (_activationRegistration != null) _activationRegistration.Unregister(null);
+            if (_windowSource != null) _windowSource.RemoveHook(WindowMessageHook);
             if (_tray != null) { _tray.Visible = false; _tray.Dispose(); }
             if (_trayIcon != null) _trayIcon.Dispose();
         }
@@ -522,6 +541,25 @@ namespace WindowMemory
             RebuildTrayMenu();
         }
 
+        private IntPtr WindowMessageHook(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (_taskbarCreatedMessage != 0 && message == _taskbarCreatedMessage)
+                Dispatcher.BeginInvoke(new Action(RecreateTrayIcon));
+            return IntPtr.Zero;
+        }
+
+        private void RecreateTrayIcon()
+        {
+            if (_tray == null)
+            {
+                CreateTray();
+                return;
+            }
+            _tray.Visible = false;
+            _tray.Icon = _trayIcon;
+            _tray.Visible = true;
+        }
+
         private void RebuildTrayMenu()
         {
             if (_tray == null) return;
@@ -541,6 +579,9 @@ namespace WindowMemory
             Forms.ToolStripMenuItem pause = new Forms.ToolStripMenuItem("暂停自动恢复") { Checked = _state.Preferences.AutoRestorePaused, CheckOnClick = true };
             pause.CheckedChanged += delegate { Dispatcher.BeginInvoke(new Action(delegate { SetPaused(pause.Checked); })); };
             menu.Items.Add(pause);
+            Forms.ToolStripMenuItem autoStart = new Forms.ToolStripMenuItem("开机自启动") { Checked = StartupService.IsEnabled(), CheckOnClick = true };
+            autoStart.CheckedChanged += delegate { Dispatcher.BeginInvoke(new Action(delegate { SetAutoStart(autoStart.Checked); })); };
+            menu.Items.Add(autoStart);
             menu.Items.Add(new Forms.ToolStripSeparator());
             menu.Items.Add("退出", null, delegate { Dispatcher.BeginInvoke(new Action(ExitApplication)); });
             if (_tray.ContextMenuStrip != null) _tray.ContextMenuStrip.Dispose();
@@ -725,7 +766,7 @@ namespace WindowMemory
                 existing = new WindowRule
                 {
                     Name = window.AppLabel,
-                    Matcher = _windows.CreateMatcher(window, TitleMatchMode.Exact),
+                    Matcher = _windows.CreateProgramMatcher(window),
                     Placement = _windows.CreatePlacement(window),
                     Enabled = true
                 };
@@ -788,7 +829,11 @@ namespace WindowMemory
         private void AutoStartChanged(object sender, RoutedEventArgs e)
         {
             if (_loadingSettings) return;
-            bool enabled = _autoStart.IsChecked == true;
+            SetAutoStart(_autoStart.IsChecked == true);
+        }
+
+        private void SetAutoStart(bool enabled)
+        {
             string error;
             if (!StartupService.SetEnabled(enabled, out error))
             {
@@ -900,6 +945,9 @@ namespace WindowMemory
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         private static extern IntPtr SendMessage(IntPtr window, int message, IntPtr parameter, IntPtr value);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern uint RegisterWindowMessage(string message);
 
         private sealed class IntervalOption
         {

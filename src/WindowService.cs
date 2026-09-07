@@ -95,6 +95,18 @@ namespace WindowMemory
             };
         }
 
+        public WindowMatcher CreateProgramMatcher(WindowDescriptor window)
+        {
+            return new WindowMatcher
+            {
+                ProcessPath = window.ProcessPath,
+                ProcessName = window.ProcessName,
+                ClassName = string.Empty,
+                TitleText = string.Empty,
+                TitleMode = TitleMatchMode.Ignore
+            };
+        }
+
         public SavedPlacement CreatePlacement(WindowDescriptor window)
         {
             NativeRect work = window.MonitorWorkArea;

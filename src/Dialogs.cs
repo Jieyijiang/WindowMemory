@@ -158,7 +158,7 @@ namespace WindowMemory
             if (captured != null)
             {
                 rule.Name = captured.AppLabel;
-                rule.Matcher = service.CreateMatcher(captured, TitleMatchMode.Exact);
+                rule.Matcher = service.CreateProgramMatcher(captured);
                 rule.Placement = service.CreatePlacement(captured);
             }
             _placement = rule.Placement;
@@ -181,11 +181,11 @@ namespace WindowMemory
             StackPanel modeStack = new StackPanel();
             modeStack.Children.Add(Ui.Label("标题匹配方式"));
             _mode = new ComboBox();
+            _mode.Items.Add(new ModeOption(TitleMatchMode.Ignore, "按程序匹配（忽略标题）"));
             _mode.Items.Add(new ModeOption(TitleMatchMode.Exact, "标题完全一致"));
             _mode.Items.Add(new ModeOption(TitleMatchMode.Contains, "标题包含文字"));
             _mode.Items.Add(new ModeOption(TitleMatchMode.StartsWith, "标题以文字开头"));
             _mode.Items.Add(new ModeOption(TitleMatchMode.Regex, "正则表达式"));
-            _mode.Items.Add(new ModeOption(TitleMatchMode.Ignore, "忽略标题"));
             foreach (ModeOption option in _mode.Items) if (option.Value == rule.Matcher.TitleMode) _mode.SelectedItem = option;
             modeStack.Children.Add(_mode);
             matchGrid.Children.Add(modeStack);
