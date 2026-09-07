@@ -330,8 +330,8 @@ namespace WindowMemory
             expander.SetBinding(Button.ContentProperty, new Binding("ExpandLabel"));
             expander.SetBinding(Button.IsEnabledProperty, new Binding("HasCoveredRules"));
             expander.SetResourceReference(Button.StyleProperty, "RuleExpanderButton");
-            expander.SetValue(Button.ToolTipProperty, "展开或收起被覆盖的重复规则");
-            expander.AddHandler(Button.ClickEvent, new RoutedEventHandler(ToggleCoveredRules));
+            expander.AddHandler(Button.MouseEnterEvent, new MouseEventHandler(HoverCoveredRules));
+            expander.AddHandler(Button.ClickEvent, new RoutedEventHandler(ActivateCoveredRules));
             _rulesGrid.Columns.Add(new DataGridTemplateColumn
             {
                 Header = string.Empty,
@@ -343,6 +343,7 @@ namespace WindowMemory
             _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "目标位置", Binding = new Binding("PlacementSummary"), ElementStyle = centeredText, Width = new DataGridLength(190) });
             _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "状态", Binding = new Binding("EnabledLabel"), ElementStyle = centeredText, Width = new DataGridLength(88) });
             _rulesGrid.MouseDoubleClick += EditRule;
+            _rulesGrid.MouseLeave += CollapseCoveredRules;
             Grid tableLayer = new Grid();
             tableLayer.Children.Add(_rulesGrid);
             _rulesEmpty = Ui.Muted("还没有窗口规则。点击右上角“新建规则”，选择一个正在运行的窗口。", 14);
@@ -809,15 +810,31 @@ namespace WindowMemory
             }
         }
 
-        private void ToggleCoveredRules(object sender, RoutedEventArgs e)
+        private void HoverCoveredRules(object sender, MouseEventArgs e)
+        {
+            ExpandCoveredRules(sender);
+            e.Handled = true;
+        }
+
+        private void ActivateCoveredRules(object sender, RoutedEventArgs e)
+        {
+            ExpandCoveredRules(sender);
+            e.Handled = true;
+        }
+
+        private void ExpandCoveredRules(object sender)
         {
             FrameworkElement source = sender as FrameworkElement;
             WindowRule rule = source == null ? null : source.DataContext as WindowRule;
-            if (rule == null || !rule.HasCoveredRules) return;
-            if (!_expandedRuleGroups.Add(rule.MatcherIdentityKey))
-                _expandedRuleGroups.Remove(rule.MatcherIdentityKey);
+            if (rule != null && rule.HasCoveredRules && _expandedRuleGroups.Add(rule.MatcherIdentityKey))
+                RefreshEverything();
+        }
+
+        private void CollapseCoveredRules(object sender, MouseEventArgs e)
+        {
+            if (_expandedRuleGroups.Count == 0) return;
+            _expandedRuleGroups.Clear();
             RefreshEverything();
-            e.Handled = true;
         }
 
         private void EditCaptureHotkey(object sender, RoutedEventArgs e)

@@ -127,7 +127,7 @@ namespace WindowMemory
     <Setter Property='Background' Value='Transparent'/>
     <Setter Property='BorderBrush' Value='Transparent'/>
     <Setter Property='Foreground' Value='{StaticResource TextBrush}'/>
-    <Setter Property='FontSize' Value='12'/>
+    <Setter Property='FontSize' Value='14'/>
     <Setter Property='Template'>
       <Setter.Value>
         <ControlTemplate TargetType='Button'>
@@ -140,7 +140,7 @@ namespace WindowMemory
             </Border>
           </Grid>
           <ControlTemplate.Triggers>
-            <Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Pill' Property='Background' Value='{StaticResource SurfaceHoverBrush}'/><Setter TargetName='Pill' Property='BorderBrush' Value='{StaticResource FocusBrush}'/></Trigger>
+            <Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Pill' Property='Background' Value='{StaticResource SurfaceHoverBrush}'/></Trigger>
             <Trigger Property='IsPressed' Value='True'><Setter TargetName='Pill' Property='RenderTransform'><Setter.Value><ScaleTransform ScaleX='0.96' ScaleY='0.96'/></Setter.Value></Setter></Trigger>
             <Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Pill' Property='BorderBrush' Value='{StaticResource FocusBrush}'/></Trigger>
           </ControlTemplate.Triggers>
