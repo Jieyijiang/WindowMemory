@@ -118,6 +118,18 @@ namespace WindowMemory
     <Setter Property='Foreground' Value='#FF9C9C'/>
   </Style>
 
+  <Style x:Key='RuleExpanderButton' TargetType='Button' BasedOn='{StaticResource {x:Type Button}}'>
+    <Setter Property='Width' Value='40'/>
+    <Setter Property='Height' Value='40'/>
+    <Setter Property='MinWidth' Value='40'/>
+    <Setter Property='MinHeight' Value='40'/>
+    <Setter Property='Padding' Value='0'/>
+    <Setter Property='Background' Value='Transparent'/>
+    <Setter Property='BorderBrush' Value='Transparent'/>
+    <Setter Property='Foreground' Value='{StaticResource TextBrush}'/>
+    <Setter Property='FontSize' Value='13'/>
+  </Style>
+
   <Style x:Key='NavButton' TargetType='Button' BasedOn='{StaticResource {x:Type Button}}'>
     <Setter Property='HorizontalContentAlignment' Value='Left'/>
     <Setter Property='Background' Value='Transparent'/>
@@ -268,7 +280,11 @@ namespace WindowMemory
     <Style.Triggers>
       <Trigger Property='IsMouseOver' Value='True'><Setter Property='Background' Value='{StaticResource SurfaceHoverBrush}'/></Trigger>
       <Trigger Property='IsSelected' Value='True'><Setter Property='Background' Value='#253E5C'/><Setter Property='Foreground' Value='White'/></Trigger>
-      <DataTrigger Binding='{Binding IsShadowed}' Value='True'><Setter Property='Opacity' Value='0.38'/><Setter Property='ToolTip' Value='相同匹配条件的后续规则已覆盖此规则'/></DataTrigger>
+      <DataTrigger Binding='{Binding IsShadowed}' Value='True'><Setter Property='Opacity' Value='0.38'/><Setter Property='Visibility' Value='Collapsed'/><Setter Property='ToolTip' Value='相同匹配条件的后续规则已覆盖此规则'/></DataTrigger>
+      <MultiDataTrigger>
+        <MultiDataTrigger.Conditions><Condition Binding='{Binding IsShadowed}' Value='True'/><Condition Binding='{Binding IsGroupExpanded}' Value='True'/></MultiDataTrigger.Conditions>
+        <Setter Property='Visibility' Value='Visible'/>
+      </MultiDataTrigger>
     </Style.Triggers>
   </Style>
 

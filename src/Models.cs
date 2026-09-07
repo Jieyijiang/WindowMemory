@@ -160,6 +160,9 @@ namespace WindowMemory
         [DataMember(Order = 5)] public WindowMatcher Matcher { get; set; }
         [DataMember(Order = 6)] public SavedPlacement Placement { get; set; }
         public bool IsShadowed { get; set; }
+        public bool IsGroupExpanded { get; set; }
+        public bool HasCoveredRules { get; set; }
+        public int CoveredRuleCount { get; set; }
 
         public WindowRule()
         {
@@ -174,18 +177,61 @@ namespace WindowMemory
         public string EnabledLabel { get { return IsShadowed ? "已覆盖" : (Enabled ? "自动" : "暂停"); } }
         public string MatcherSummary { get { return Matcher == null ? "未配置" : Matcher.Summary; } }
         public string PlacementSummary { get { return Placement == null ? "未配置" : Placement.Summary; } }
+        public string MatcherIdentityKey { get { return MatcherIdentity(Matcher); } }
+        public string ExpandLabel
+        {
+            get { return HasCoveredRules ? (IsGroupExpanded ? "▼ " : "▶ ") + CoveredRuleCount : string.Empty; }
+        }
 
         public static void RefreshShadowedState(IList<WindowRule> rules)
         {
+            RefreshShadowedState(rules, null);
+        }
+
+        public static void RefreshShadowedState(IList<WindowRule> rules, ISet<string> expandedGroups)
+        {
             if (rules == null) return;
+            Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (WindowRule rule in rules)
+            {
+                if (rule == null) continue;
+                string key = rule.MatcherIdentityKey;
+                int count;
+                counts[key] = counts.TryGetValue(key, out count) ? count + 1 : 1;
+            }
+
             HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
             for (int index = rules.Count - 1; index >= 0; index--)
             {
                 WindowRule rule = rules[index];
                 if (rule == null) continue;
-                string key = MatcherIdentity(rule.Matcher);
+                string key = rule.MatcherIdentityKey;
                 rule.IsShadowed = !seen.Add(key);
+                rule.IsGroupExpanded = expandedGroups != null && expandedGroups.Contains(key);
+                rule.HasCoveredRules = !rule.IsShadowed && counts[key] > 1;
+                rule.CoveredRuleCount = rule.HasCoveredRules ? counts[key] - 1 : 0;
             }
+        }
+
+        public static IList<WindowRule> CreateDisplayList(IList<WindowRule> rules)
+        {
+            List<WindowRule> display = new List<WindowRule>();
+            if (rules == null) return display;
+            for (int index = 0; index < rules.Count; index++)
+            {
+                WindowRule winner = rules[index];
+                if (winner == null || winner.IsShadowed) continue;
+                display.Add(winner);
+                if (!winner.IsGroupExpanded) continue;
+                for (int previous = index - 1; previous >= 0; previous--)
+                {
+                    WindowRule covered = rules[previous];
+                    if (covered != null && covered.IsShadowed &&
+                        string.Equals(covered.MatcherIdentityKey, winner.MatcherIdentityKey, StringComparison.Ordinal))
+                        display.Add(covered);
+                }
+            }
+            return display;
         }
 
         private static string MatcherIdentity(WindowMatcher matcher)
@@ -232,6 +278,9 @@ namespace WindowMemory
                 Enabled = Enabled,
                 KeepPosition = KeepPosition,
                 IsShadowed = IsShadowed,
+                IsGroupExpanded = IsGroupExpanded,
+                HasCoveredRules = HasCoveredRules,
+                CoveredRuleCount = CoveredRuleCount,
                 Matcher = Matcher == null ? new WindowMatcher() : Matcher.Clone(),
                 Placement = Placement == null ? new SavedPlacement() : Placement.Clone()
             };

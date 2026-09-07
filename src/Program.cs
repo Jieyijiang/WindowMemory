@@ -12,8 +12,8 @@ using System.Windows;
 [assembly: AssemblyCompany("Personal Utility")]
 [assembly: AssemblyProduct("Window Memory")]
 [assembly: AssemblyCopyright("Copyright © 2026")]
-[assembly: AssemblyVersion("1.0.5.0")]
-[assembly: AssemblyFileVersion("1.0.5.0")]
+[assembly: AssemblyVersion("1.0.6.0")]
+[assembly: AssemblyFileVersion("1.0.6.0")]
 
 namespace WindowMemory
 {
@@ -362,6 +362,14 @@ namespace WindowMemory
             WindowRule.RefreshShadowedState(rules);
             Assert(rules[0].IsShadowed && !rules[1].IsShadowed, "重复规则没有遵循最后一条生效");
             Assert(rules[0].EnabledLabel == "已覆盖" && rules[1].EnabledLabel == "自动", "重复规则状态标签错误");
+            Assert(!rules[0].IsGroupExpanded && rules[1].ExpandLabel == "▶ 1", "重复规则默认没有收起");
+
+            HashSet<string> expanded = new HashSet<string>(StringComparer.Ordinal) { rules[1].MatcherIdentityKey };
+            WindowRule.RefreshShadowedState(rules, expanded);
+            Assert(rules[0].IsGroupExpanded && rules[1].ExpandLabel == "▼ 1", "重复规则无法展开");
+            IList<WindowRule> expandedDisplay = WindowRule.CreateDisplayList(rules);
+            Assert(expandedDisplay.Count == 2 && ReferenceEquals(expandedDisplay[0], rules[1]) &&
+                ReferenceEquals(expandedDisplay[1], rules[0]), "展开后旧规则没有排列在生效规则下方");
 
             rules[1].Enabled = false;
             WindowRule.RefreshShadowedState(rules);
@@ -369,7 +377,8 @@ namespace WindowMemory
 
             rules.RemoveAt(1);
             WindowRule.RefreshShadowedState(rules);
-            Assert(!rules[0].IsShadowed && rules[0].EnabledLabel == "自动", "删除最后一条后旧规则没有恢复");
+            Assert(!rules[0].IsShadowed && rules[0].EnabledLabel == "自动" && rules[0].ExpandLabel == string.Empty,
+                "删除最后一条后旧规则没有恢复");
         }
 
         private static void Assert(bool condition, string message)

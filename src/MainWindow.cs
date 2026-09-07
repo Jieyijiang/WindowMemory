@@ -28,6 +28,7 @@ namespace WindowMemory
         private readonly AppState _state;
         private readonly Dictionary<string, FrameworkElement> _pages = new Dictionary<string, FrameworkElement>();
         private readonly Dictionary<string, Button> _navButtons = new Dictionary<string, Button>();
+        private readonly HashSet<string> _expandedRuleGroups = new HashSet<string>(StringComparer.Ordinal);
         private readonly bool _startHidden;
         private readonly EventWaitHandle _activationEvent;
         private RegisteredWaitHandle _activationRegistration;
@@ -100,6 +101,14 @@ namespace WindowMemory
 
         internal void SavePreview(string path, string page)
         {
+            if (string.Equals(page, "rules-expanded", StringComparison.OrdinalIgnoreCase))
+            {
+                WindowRule.RefreshShadowedState(_state.Rules);
+                foreach (WindowRule rule in _state.Rules)
+                    if (rule.HasCoveredRules) _expandedRuleGroups.Add(rule.MatcherIdentityKey);
+                RefreshEverything();
+                page = "rules";
+            }
             if (!string.IsNullOrWhiteSpace(page) && _pages.ContainsKey(page)) ShowPage(page);
             FrameworkElement element = Content as FrameworkElement;
             if (element == null) throw new InvalidOperationException("界面尚未创建");
@@ -311,13 +320,28 @@ namespace WindowMemory
             actions.Children.Add(Ui.Button("新建规则", AddRule, "PrimaryButton"));
 
             Border table = Ui.Card(null, new Thickness(0));
-            table.Height = 430;
+            table.Height = 500;
             table.Padding = new Thickness(0);
-            _rulesGrid = new DataGrid { IsReadOnly = true };
-            _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "规则", Binding = new Binding("Name"), Width = new DataGridLength(170) });
-            _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "匹配条件", Binding = new Binding("MatcherSummary"), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
-            _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "目标位置", Binding = new Binding("PlacementSummary"), Width = new DataGridLength(190) });
-            _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "状态", Binding = new Binding("EnabledLabel"), Width = new DataGridLength(88) });
+            _rulesGrid = new DataGrid { IsReadOnly = true, RowHeight = 46, ColumnHeaderHeight = 34 };
+            Style centeredText = new Style(typeof(TextBlock));
+            centeredText.Setters.Add(new Setter(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center));
+            centeredText.Setters.Add(new Setter(TextBlock.TextTrimmingProperty, TextTrimming.CharacterEllipsis));
+            FrameworkElementFactory expander = new FrameworkElementFactory(typeof(Button));
+            expander.SetBinding(Button.ContentProperty, new Binding("ExpandLabel"));
+            expander.SetBinding(Button.IsEnabledProperty, new Binding("HasCoveredRules"));
+            expander.SetResourceReference(Button.StyleProperty, "RuleExpanderButton");
+            expander.SetValue(Button.ToolTipProperty, "展开或收起被覆盖的重复规则");
+            expander.AddHandler(Button.ClickEvent, new RoutedEventHandler(ToggleCoveredRules));
+            _rulesGrid.Columns.Add(new DataGridTemplateColumn
+            {
+                Header = string.Empty,
+                CellTemplate = new DataTemplate { VisualTree = expander },
+                Width = new DataGridLength(54)
+            });
+            _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "规则", Binding = new Binding("Name"), ElementStyle = centeredText, Width = new DataGridLength(150) });
+            _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "匹配条件", Binding = new Binding("MatcherSummary"), ElementStyle = centeredText, Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
+            _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "目标位置", Binding = new Binding("PlacementSummary"), ElementStyle = centeredText, Width = new DataGridLength(190) });
+            _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "状态", Binding = new Binding("EnabledLabel"), ElementStyle = centeredText, Width = new DataGridLength(88) });
             _rulesGrid.MouseDoubleClick += EditRule;
             Grid tableLayer = new Grid();
             tableLayer.Children.Add(_rulesGrid);
@@ -785,6 +809,17 @@ namespace WindowMemory
             }
         }
 
+        private void ToggleCoveredRules(object sender, RoutedEventArgs e)
+        {
+            FrameworkElement source = sender as FrameworkElement;
+            WindowRule rule = source == null ? null : source.DataContext as WindowRule;
+            if (rule == null || !rule.HasCoveredRules) return;
+            if (!_expandedRuleGroups.Add(rule.MatcherIdentityKey))
+                _expandedRuleGroups.Remove(rule.MatcherIdentityKey);
+            RefreshEverything();
+            e.Handled = true;
+        }
+
         private void EditCaptureHotkey(object sender, RoutedEventArgs e)
         {
             HotkeyDialog dialog = new HotkeyDialog(this, _state.Preferences.CaptureHotkey);
@@ -866,11 +901,11 @@ namespace WindowMemory
 
         private void RefreshEverything()
         {
-            WindowRule.RefreshShadowedState(_state.Rules);
+            WindowRule.RefreshShadowedState(_state.Rules, _expandedRuleGroups);
             if (_rulesGrid != null)
             {
                 _rulesGrid.ItemsSource = null;
-                _rulesGrid.ItemsSource = _state.Rules;
+                _rulesGrid.ItemsSource = WindowRule.CreateDisplayList(_state.Rules);
             }
             if (_layoutsGrid != null)
             {
