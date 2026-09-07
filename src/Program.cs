@@ -12,8 +12,8 @@ using System.Windows;
 [assembly: AssemblyCompany("Personal Utility")]
 [assembly: AssemblyProduct("Window Memory")]
 [assembly: AssemblyCopyright("Copyright © 2026")]
-[assembly: AssemblyVersion("1.0.3.0")]
-[assembly: AssemblyFileVersion("1.0.3.0")]
+[assembly: AssemblyVersion("1.0.4.0")]
+[assembly: AssemblyFileVersion("1.0.4.0")]
 
 namespace WindowMemory
 {
@@ -260,6 +260,7 @@ namespace WindowMemory
                 }
                 Assert(moved, "自动恢复未实际移动测试窗口");
                 Assert(engine.ImmediateEventCount > 0, "没有收到 Windows 窗口事件");
+                Assert(engine.ImmediateAppliedCount > 0, "窗口创建事件没有直接执行归位");
                 Assert(response != null && response.ElapsedMilliseconds < 250, "窗口事件触发后恢复不够及时");
                 return 0;
             }

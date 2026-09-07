@@ -73,6 +73,43 @@ namespace WindowMemory
             return result;
         }
 
+        public WindowDescriptor DescribeWindow(IntPtr hwnd, bool requireVisible)
+        {
+            if (hwnd == IntPtr.Zero || hwnd == GetShellWindow()) return null;
+            if (requireVisible && !IsWindowVisible(hwnd)) return null;
+            int length = GetWindowTextLength(hwnd);
+            if (length <= 0) return null;
+
+            uint processId;
+            GetWindowThreadProcessId(hwnd, out processId);
+            if (processId == Process.GetCurrentProcess().Id) return null;
+
+            NativeRect rect;
+            if (!GetWindowRect(hwnd, out rect) || rect.Width < 40 || rect.Height < 30) return null;
+
+            int cloaked = 0;
+            try { DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, out cloaked, Marshal.SizeOf(typeof(int))); }
+            catch { cloaked = 0; }
+            if (cloaked != 0) return null;
+
+            string processPath = ReadProcessPath(processId);
+            MonitorInfo monitor = ReadMonitorForWindow(hwnd);
+            return new WindowDescriptor
+            {
+                Handle = hwnd,
+                Title = ReadText(hwnd, length),
+                ClassName = ReadClass(hwnd),
+                ProcessPath = processPath,
+                ProcessName = string.IsNullOrWhiteSpace(processPath)
+                    ? ReadProcessName(processId)
+                    : Path.GetFileNameWithoutExtension(processPath),
+                Bounds = rect,
+                Maximized = IsZoomed(hwnd),
+                MonitorDevice = monitor.Device,
+                MonitorWorkArea = monitor.WorkArea
+            };
+        }
+
         public WindowDescriptor GetForegroundDescriptor()
         {
             IntPtr foreground = GetForegroundWindow();

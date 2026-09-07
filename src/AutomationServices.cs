@@ -12,6 +12,7 @@ namespace WindowMemory
     {
         private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
         private const uint EVENT_SYSTEM_MINIMIZEEND = 0x0017;
+        private const uint EVENT_OBJECT_CREATE = 0x8000;
         private const uint EVENT_OBJECT_SHOW = 0x8002;
         private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
         private const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
@@ -28,13 +29,16 @@ namespace WindowMemory
         private bool _paused;
         private int _busy;
         private int _immediateEventCount;
+        private int _immediateAppliedCount;
         private WinEventDelegate _winEventCallback;
+        private IntPtr _createHook;
         private IntPtr _foregroundHook;
         private IntPtr _restoreHook;
         private IntPtr _showHook;
 
         public event Action<string> StatusChanged;
         internal int ImmediateEventCount { get { return _immediateEventCount; } }
+        internal int ImmediateAppliedCount { get { return _immediateAppliedCount; } }
 
         public AutoRestoreEngine(WindowService windows)
         {
@@ -84,10 +88,14 @@ namespace WindowMemory
             if (_restoreHook == IntPtr.Zero)
                 _restoreHook = SetWinEventHook(EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZEEND,
                     IntPtr.Zero, _winEventCallback, 0, 0, flags);
+            if (_createHook == IntPtr.Zero)
+                _createHook = SetWinEventHook(EVENT_OBJECT_CREATE, EVENT_OBJECT_CREATE,
+                    IntPtr.Zero, _winEventCallback, 0, 0, flags);
             if (_showHook == IntPtr.Zero)
                 _showHook = SetWinEventHook(EVENT_OBJECT_SHOW, EVENT_OBJECT_SHOW,
                     IntPtr.Zero, _winEventCallback, 0, 0, flags);
-            if (_foregroundHook == IntPtr.Zero || _restoreHook == IntPtr.Zero || _showHook == IntPtr.Zero)
+            if (_foregroundHook == IntPtr.Zero || _restoreHook == IntPtr.Zero ||
+                _createHook == IntPtr.Zero || _showHook == IntPtr.Zero)
                 RaiseStatus("即时检测未完全启用，已保留 1.2 s 兜底扫描");
         }
 
@@ -95,23 +103,63 @@ namespace WindowMemory
             uint eventThread, uint eventTime)
         {
             if (hwnd == IntPtr.Zero) return;
-            if (eventType == EVENT_OBJECT_SHOW && (objectId != OBJID_WINDOW || childId != 0)) return;
+            if ((eventType == EVENT_OBJECT_CREATE || eventType == EVENT_OBJECT_SHOW) &&
+                (objectId != OBJID_WINDOW || childId != 0)) return;
             bool paused;
             lock (_sync) paused = _paused;
             if (paused) return;
             Interlocked.Increment(ref _immediateEventCount);
-            RequestImmediateScan();
+            if (!ApplyImmediateWindow(hwnd)) RequestImmediateScan();
+        }
+
+        private bool ApplyImmediateWindow(IntPtr hwnd)
+        {
+            if (Interlocked.Exchange(ref _busy, 1) != 0) return false;
+            try
+            {
+                WindowDescriptor window = _windows.DescribeWindow(hwnd, false);
+                if (window == null) return false;
+                List<WindowRule> rules;
+                lock (_sync)
+                {
+                    rules = new List<WindowRule>();
+                    foreach (WindowRule rule in _rules) rules.Add(rule.Clone());
+                }
+                bool applied = false;
+                foreach (WindowRule rule in rules)
+                {
+                    if (!rule.Enabled) continue;
+                    int score;
+                    if (!_windows.Matches(rule.Matcher, window, out score)) continue;
+                    string token = rule.Id + ":" + window.Handle.ToInt64();
+                    if (!rule.KeepPosition && _applied.Contains(token)) { applied = true; continue; }
+                    string error;
+                    if (_windows.ApplyPlacement(window.Handle, rule.Placement, false, out error))
+                    {
+                        _applied.Add(token);
+                        Interlocked.Increment(ref _immediateAppliedCount);
+                        RaiseStatus("即时归位：" + rule.Name);
+                        applied = true;
+                    }
+                }
+                return applied;
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _busy, 0);
+            }
         }
 
         private void RequestImmediateScan()
         {
-            if (_eventTimer != null) _eventTimer.Change(15, Timeout.Infinite);
+            if (_eventTimer != null) _eventTimer.Change(1, Timeout.Infinite);
         }
 
         private void ReleaseImmediateHooks()
         {
             if (_foregroundHook != IntPtr.Zero) { UnhookWinEvent(_foregroundHook); _foregroundHook = IntPtr.Zero; }
             if (_restoreHook != IntPtr.Zero) { UnhookWinEvent(_restoreHook); _restoreHook = IntPtr.Zero; }
+            if (_createHook != IntPtr.Zero) { UnhookWinEvent(_createHook); _createHook = IntPtr.Zero; }
             if (_showHook != IntPtr.Zero) { UnhookWinEvent(_showHook); _showHook = IntPtr.Zero; }
         }
 
