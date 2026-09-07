@@ -336,7 +336,7 @@ namespace WindowMemory
             {
                 Header = string.Empty,
                 CellTemplate = new DataTemplate { VisualTree = expander },
-                Width = new DataGridLength(54)
+                Width = new DataGridLength(48)
             });
             _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "规则", Binding = new Binding("Name"), ElementStyle = centeredText, Width = new DataGridLength(150) });
             _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "匹配条件", Binding = new Binding("MatcherSummary"), ElementStyle = centeredText, Width = new DataGridLength(1, DataGridLengthUnitType.Star) });

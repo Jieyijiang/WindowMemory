@@ -127,7 +127,27 @@ namespace WindowMemory
     <Setter Property='Background' Value='Transparent'/>
     <Setter Property='BorderBrush' Value='Transparent'/>
     <Setter Property='Foreground' Value='{StaticResource TextBrush}'/>
-    <Setter Property='FontSize' Value='13'/>
+    <Setter Property='FontSize' Value='12'/>
+    <Setter Property='Template'>
+      <Setter.Value>
+        <ControlTemplate TargetType='Button'>
+          <Grid Width='40' Height='40'>
+            <Border x:Name='Pill' Width='34' Height='24' HorizontalAlignment='Center' VerticalAlignment='Center'
+                    Background='{StaticResource SurfaceRaisedBrush}' BorderBrush='{StaticResource BorderBrush}'
+                    BorderThickness='1' CornerRadius='12' RenderTransformOrigin='0.5,0.5'>
+              <Border.RenderTransform><ScaleTransform ScaleX='1' ScaleY='1'/></Border.RenderTransform>
+              <ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/>
+            </Border>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property='IsMouseOver' Value='True'><Setter TargetName='Pill' Property='Background' Value='{StaticResource SurfaceHoverBrush}'/><Setter TargetName='Pill' Property='BorderBrush' Value='{StaticResource FocusBrush}'/></Trigger>
+            <Trigger Property='IsPressed' Value='True'><Setter TargetName='Pill' Property='RenderTransform'><Setter.Value><ScaleTransform ScaleX='0.96' ScaleY='0.96'/></Setter.Value></Setter></Trigger>
+            <Trigger Property='IsKeyboardFocused' Value='True'><Setter TargetName='Pill' Property='BorderBrush' Value='{StaticResource FocusBrush}'/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+    <Style.Triggers><Trigger Property='Content' Value=''><Setter Property='Visibility' Value='Collapsed'/></Trigger></Style.Triggers>
   </Style>
 
   <Style x:Key='NavButton' TargetType='Button' BasedOn='{StaticResource {x:Type Button}}'>
