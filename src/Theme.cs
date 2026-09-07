@@ -268,6 +268,7 @@ namespace WindowMemory
     <Style.Triggers>
       <Trigger Property='IsMouseOver' Value='True'><Setter Property='Background' Value='{StaticResource SurfaceHoverBrush}'/></Trigger>
       <Trigger Property='IsSelected' Value='True'><Setter Property='Background' Value='#253E5C'/><Setter Property='Foreground' Value='White'/></Trigger>
+      <DataTrigger Binding='{Binding IsShadowed}' Value='True'><Setter Property='Opacity' Value='0.38'/><Setter Property='ToolTip' Value='相同匹配条件的后续规则已覆盖此规则'/></DataTrigger>
     </Style.Triggers>
   </Style>
 

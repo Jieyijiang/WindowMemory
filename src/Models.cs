@@ -159,6 +159,7 @@ namespace WindowMemory
         [DataMember(Order = 4)] public bool KeepPosition { get; set; }
         [DataMember(Order = 5)] public WindowMatcher Matcher { get; set; }
         [DataMember(Order = 6)] public SavedPlacement Placement { get; set; }
+        public bool IsShadowed { get; set; }
 
         public WindowRule()
         {
@@ -170,9 +171,57 @@ namespace WindowMemory
             Placement = new SavedPlacement();
         }
 
-        public string EnabledLabel { get { return Enabled ? "自动" : "暂停"; } }
+        public string EnabledLabel { get { return IsShadowed ? "已覆盖" : (Enabled ? "自动" : "暂停"); } }
         public string MatcherSummary { get { return Matcher == null ? "未配置" : Matcher.Summary; } }
         public string PlacementSummary { get { return Placement == null ? "未配置" : Placement.Summary; } }
+
+        public static void RefreshShadowedState(IList<WindowRule> rules)
+        {
+            if (rules == null) return;
+            HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
+            for (int index = rules.Count - 1; index >= 0; index--)
+            {
+                WindowRule rule = rules[index];
+                if (rule == null) continue;
+                string key = MatcherIdentity(rule.Matcher);
+                rule.IsShadowed = !seen.Add(key);
+            }
+        }
+
+        private static string MatcherIdentity(WindowMatcher matcher)
+        {
+            if (matcher == null) return "<null>";
+            string processPath = NormalizePath(matcher.ProcessPath);
+            string processName = processPath.Length > 0 ? string.Empty : NormalizeInsensitive(matcher.ProcessName);
+            string className = NormalizeSensitive(matcher.ClassName);
+            TitleMatchMode mode = string.IsNullOrWhiteSpace(matcher.TitleText)
+                ? TitleMatchMode.Ignore
+                : matcher.TitleMode;
+            string title = mode == TitleMatchMode.Ignore ? string.Empty : NormalizeInsensitive(matcher.TitleText);
+            return Encode(processPath) + Encode(processName) + Encode(className) + ((int)mode) + ":" + Encode(title);
+        }
+
+        private static string NormalizePath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return string.Empty;
+            try { return Path.GetFullPath(path).TrimEnd('\\').ToUpperInvariant(); }
+            catch { return path.Trim().TrimEnd('\\').ToUpperInvariant(); }
+        }
+
+        private static string NormalizeInsensitive(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToUpperInvariant();
+        }
+
+        private static string NormalizeSensitive(string value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
+        }
+
+        private static string Encode(string value)
+        {
+            return value.Length + ":" + value + "|";
+        }
 
         public WindowRule Clone()
         {
@@ -182,6 +231,7 @@ namespace WindowMemory
                 Name = Name,
                 Enabled = Enabled,
                 KeepPosition = KeepPosition,
+                IsShadowed = IsShadowed,
                 Matcher = Matcher == null ? new WindowMatcher() : Matcher.Clone(),
                 Placement = Placement == null ? new SavedPlacement() : Placement.Clone()
             };

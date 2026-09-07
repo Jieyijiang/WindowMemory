@@ -317,7 +317,7 @@ namespace WindowMemory
             _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "规则", Binding = new Binding("Name"), Width = new DataGridLength(170) });
             _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "匹配条件", Binding = new Binding("MatcherSummary"), Width = new DataGridLength(1, DataGridLengthUnitType.Star) });
             _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "目标位置", Binding = new Binding("PlacementSummary"), Width = new DataGridLength(190) });
-            _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "状态", Binding = new Binding("EnabledLabel"), Width = new DataGridLength(76) });
+            _rulesGrid.Columns.Add(new DataGridTextColumn { Header = "状态", Binding = new Binding("EnabledLabel"), Width = new DataGridLength(88) });
             _rulesGrid.MouseDoubleClick += EditRule;
             Grid tableLayer = new Grid();
             tableLayer.Children.Add(_rulesGrid);
@@ -752,13 +752,15 @@ namespace WindowMemory
             }
 
             WindowRule existing = null;
-            foreach (WindowRule rule in _state.Rules)
+            int bestScore = -1;
+            for (int index = _state.Rules.Count - 1; index >= 0; index--)
             {
+                WindowRule rule = _state.Rules[index];
                 int score;
-                if (_windows.Matches(rule.Matcher, window, out score) && rule.Matcher.TitleMode == TitleMatchMode.Exact)
+                if (_windows.Matches(rule.Matcher, window, out score) && score > bestScore)
                 {
                     existing = rule;
-                    break;
+                    bestScore = score;
                 }
             }
 
@@ -864,6 +866,7 @@ namespace WindowMemory
 
         private void RefreshEverything()
         {
+            WindowRule.RefreshShadowedState(_state.Rules);
             if (_rulesGrid != null)
             {
                 _rulesGrid.ItemsSource = null;

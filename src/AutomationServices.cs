@@ -39,6 +39,7 @@ namespace WindowMemory
         public event Action<string> StatusChanged;
         internal int ImmediateEventCount { get { return _immediateEventCount; } }
         internal int ImmediateAppliedCount { get { return _immediateAppliedCount; } }
+        internal int EffectiveRuleCount { get { lock (_sync) return _rules.Count; } }
 
         public AutoRestoreEngine(WindowService windows)
         {
@@ -54,6 +55,8 @@ namespace WindowMemory
                 if (rules != null)
                     foreach (WindowRule rule in rules)
                         _rules.Add(rule.Clone());
+                WindowRule.RefreshShadowedState(_rules);
+                _rules.RemoveAll(delegate(WindowRule rule) { return rule.IsShadowed; });
                 _immediate = interval == 0;
                 _interval = _immediate ? 1200 : Math.Max(250, Math.Min(5000, interval));
                 _paused = paused;
@@ -128,7 +131,7 @@ namespace WindowMemory
                 bool applied = false;
                 foreach (WindowRule rule in rules)
                 {
-                    if (!rule.Enabled) continue;
+                    if (!rule.Enabled || rule.IsShadowed) continue;
                     int score;
                     if (!_windows.Matches(rule.Matcher, window, out score)) continue;
                     string token = rule.Id + ":" + window.Handle.ToInt64();
@@ -182,7 +185,7 @@ namespace WindowMemory
                 HashSet<string> alive = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (WindowRule rule in rules)
                 {
-                    if (!rule.Enabled) continue;
+                    if (!rule.Enabled || rule.IsShadowed) continue;
                     foreach (WindowDescriptor window in visible)
                     {
                         int score;

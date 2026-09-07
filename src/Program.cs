@@ -12,8 +12,8 @@ using System.Windows;
 [assembly: AssemblyCompany("Personal Utility")]
 [assembly: AssemblyProduct("Window Memory")]
 [assembly: AssemblyCopyright("Copyright © 2026")]
-[assembly: AssemblyVersion("1.0.4.0")]
-[assembly: AssemblyFileVersion("1.0.4.0")]
+[assembly: AssemblyVersion("1.0.5.0")]
+[assembly: AssemblyFileVersion("1.0.5.0")]
 
 namespace WindowMemory
 {
@@ -163,6 +163,7 @@ namespace WindowMemory
                     ClassName = "NewClass",
                     Title = "新标题"
                 }, out score), "程序绑定不应受标题或窗口类变化影响");
+                TestDuplicateRulePrecedence();
                 TestConfigMigration();
                 state.Rules.Add(new WindowRule { Name = "测试规则", Matcher = matcher });
                 state.Layouts.Add(new LayoutProfile { Name = "布局 1", Hotkey = "Ctrl+1" });
@@ -229,8 +230,15 @@ namespace WindowMemory
                     Placement = target,
                     Enabled = true
                 };
+                WindowRule supersededRule = rule.Clone();
+                supersededRule.Id = Guid.NewGuid().ToString("N");
+                supersededRule.Name = "已覆盖的旧位置";
+                supersededRule.Placement = target.Clone();
+                supersededRule.Placement.X = 80;
+                supersededRule.Placement.Y = 80;
                 engine = new AutoRestoreEngine(service);
-                engine.Update(new[] { rule }, 0, false);
+                engine.Update(new[] { supersededRule, rule }, 0, false);
+                Assert(engine.EffectiveRuleCount == 1, "自动恢复引擎没有排除被覆盖的重复规则");
                 engine.Start();
 
                 child = Process.Start(new ProcessStartInfo
@@ -334,6 +342,34 @@ namespace WindowMemory
             {
                 if (Directory.Exists(directory)) Directory.Delete(directory, true);
             }
+        }
+
+        private static void TestDuplicateRulePrecedence()
+        {
+            WindowMatcher firstMatcher = new WindowMatcher
+            {
+                ProcessPath = @"C:\Tools\demo.exe",
+                ProcessName = "demo",
+                ClassName = string.Empty,
+                TitleMode = TitleMatchMode.Ignore
+            };
+            List<WindowRule> rules = new List<WindowRule>
+            {
+                new WindowRule { Name = "旧位置", Matcher = firstMatcher, Enabled = true },
+                new WindowRule { Name = "新位置", Matcher = firstMatcher.Clone(), Enabled = true }
+            };
+
+            WindowRule.RefreshShadowedState(rules);
+            Assert(rules[0].IsShadowed && !rules[1].IsShadowed, "重复规则没有遵循最后一条生效");
+            Assert(rules[0].EnabledLabel == "已覆盖" && rules[1].EnabledLabel == "自动", "重复规则状态标签错误");
+
+            rules[1].Enabled = false;
+            WindowRule.RefreshShadowedState(rules);
+            Assert(rules[0].IsShadowed && rules[1].EnabledLabel == "暂停", "最后一条暂停时不应启用旧规则");
+
+            rules.RemoveAt(1);
+            WindowRule.RefreshShadowedState(rules);
+            Assert(!rules[0].IsShadowed && rules[0].EnabledLabel == "自动", "删除最后一条后旧规则没有恢复");
         }
 
         private static void Assert(bool condition, string message)
