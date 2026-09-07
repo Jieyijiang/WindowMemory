@@ -387,11 +387,12 @@ namespace WindowMemory
             general.Children.Add(SettingRow("快速记忆快捷键", "记忆当前活动窗口的位置与大小", CreateHotkeyButton()));
 
             _scanInterval = new ComboBox { Width = 150, HorizontalAlignment = HorizontalAlignment.Right };
+            _scanInterval.Items.Add(new IntervalOption(0, "立即 · 事件触发"));
             _scanInterval.Items.Add(new IntervalOption(350, "快速 · 350 ms"));
             _scanInterval.Items.Add(new IntervalOption(700, "平衡 · 700 ms"));
             _scanInterval.Items.Add(new IntervalOption(1200, "省电 · 1.2 s"));
             _scanInterval.SelectionChanged += ScanIntervalChanged;
-            general.Children.Add(SettingRow("检测频率", "窗口出现后多久开始自动归位", _scanInterval));
+            general.Children.Add(SettingRow("检测方式", "窗口出现即触发；定时扫描作为兜底", _scanInterval));
 
             _paused = new CheckBox { Content = "暂停自动恢复", IsChecked = _state.Preferences.AutoRestorePaused, HorizontalAlignment = HorizontalAlignment.Right };
             _paused.Checked += PauseChanged;

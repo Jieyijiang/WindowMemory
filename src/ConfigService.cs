@@ -128,7 +128,8 @@ namespace WindowMemory
             if (state.Rules == null) state.Rules = new System.Collections.Generic.List<WindowRule>();
             if (state.Layouts == null) state.Layouts = new System.Collections.Generic.List<LayoutProfile>();
             if (string.IsNullOrWhiteSpace(state.Preferences.CaptureHotkey)) state.Preferences.CaptureHotkey = "Ctrl+Alt+Z";
-            if (state.Preferences.ScanIntervalMs < 250) state.Preferences.ScanIntervalMs = 700;
+            if (state.Preferences.ScanIntervalMs < 0 || (state.Preferences.ScanIntervalMs > 0 && state.Preferences.ScanIntervalMs < 250))
+                state.Preferences.ScanIntervalMs = 700;
             if (state.SchemaVersion < 2)
             {
                 state.Preferences.MinimizeToTray = false;
@@ -145,6 +146,11 @@ namespace WindowMemory
                         rule.Matcher.ClassName = string.Empty;
                 }
                 state.SchemaVersion = 3;
+            }
+            if (state.SchemaVersion < 4)
+            {
+                state.Preferences.ScanIntervalMs = 0;
+                state.SchemaVersion = 4;
             }
         }
     }

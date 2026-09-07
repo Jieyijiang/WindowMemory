@@ -12,8 +12,8 @@ using System.Windows;
 [assembly: AssemblyCompany("Personal Utility")]
 [assembly: AssemblyProduct("Window Memory")]
 [assembly: AssemblyCopyright("Copyright © 2026")]
-[assembly: AssemblyVersion("1.0.2.0")]
-[assembly: AssemblyFileVersion("1.0.2.0")]
+[assembly: AssemblyVersion("1.0.3.0")]
+[assembly: AssemblyFileVersion("1.0.3.0")]
 
 namespace WindowMemory
 {
@@ -146,6 +146,7 @@ namespace WindowMemory
 
                 AppState state = new AppState();
                 Assert(state.Preferences.MinimizeToTray, "默认应保持后台托盘运行");
+                Assert(state.Preferences.ScanIntervalMs == 0, "默认应使用窗口事件即时检测");
                 WindowMatcher programMatcher = service.CreateProgramMatcher(new WindowDescriptor
                 {
                     ProcessPath = @"C:\Tools\demo.exe",
@@ -206,45 +207,51 @@ namespace WindowMemory
             AutoRestoreEngine engine = null;
             try
             {
+                WindowService service = new WindowService();
+                SavedPlacement target = new SavedPlacement
+                {
+                    X = 360,
+                    Y = 260,
+                    Width = 480,
+                    Height = 320,
+                    ScaleWithMonitor = false
+                };
+                WindowRule rule = new WindowRule
+                {
+                    Name = "集成测试",
+                    Matcher = new WindowMatcher
+                    {
+                        ProcessPath = Assembly.GetExecutingAssembly().Location,
+                        ProcessName = Path.GetFileNameWithoutExtension(Assembly.GetExecutingAssembly().Location),
+                        TitleText = "WindowMemory 集成测试窗口",
+                        TitleMode = TitleMatchMode.Exact
+                    },
+                    Placement = target,
+                    Enabled = true
+                };
+                engine = new AutoRestoreEngine(service);
+                engine.Update(new[] { rule }, 0, false);
+                engine.Start();
+
                 child = Process.Start(new ProcessStartInfo
                 {
                     FileName = Assembly.GetExecutingAssembly().Location,
                     Arguments = "--test-window",
                     UseShellExecute = false
                 });
-                WindowService service = new WindowService();
-                WindowDescriptor probe = null;
-                for (int attempt = 0; attempt < 50 && probe == null; attempt++)
-                {
-                    Thread.Sleep(100);
-                    foreach (WindowDescriptor candidate in service.EnumerateWindows())
-                        if (candidate.Title == "WindowMemory 集成测试窗口") { probe = candidate; break; }
-                }
-                Assert(probe != null, "未找到集成测试窗口");
-
-                SavedPlacement target = service.CreatePlacement(probe);
-                target.ScaleWithMonitor = false;
-                target.X = probe.Bounds.Left + 140;
-                target.Y = probe.Bounds.Top + 90;
-                WindowRule rule = new WindowRule
-                {
-                    Name = "集成测试",
-                    Matcher = service.CreateProgramMatcher(probe),
-                    Placement = target,
-                    Enabled = true
-                };
-                engine = new AutoRestoreEngine(service);
-                engine.Update(new[] { rule }, 250, false);
-                engine.Start();
 
                 bool moved = false;
-                for (int attempt = 0; attempt < 30 && !moved; attempt++)
+                Stopwatch response = null;
+                for (int attempt = 0; attempt < 100 && !moved; attempt++)
                 {
-                    Thread.Sleep(100);
+                    Thread.Sleep(20);
+                    System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(
+                        System.Windows.Threading.DispatcherPriority.Background, new Action(delegate { }));
                     foreach (WindowDescriptor candidate in service.EnumerateWindows())
                     {
-                        if (candidate.Handle == probe.Handle && Math.Abs(candidate.Bounds.Left - target.X) <= 2 &&
-                            Math.Abs(candidate.Bounds.Top - target.Y) <= 2)
+                        if (candidate.Title != "WindowMemory 集成测试窗口") continue;
+                        if (response == null) response = Stopwatch.StartNew();
+                        if (Math.Abs(candidate.Bounds.Left - target.X) <= 2 && Math.Abs(candidate.Bounds.Top - target.Y) <= 2)
                         {
                             moved = true;
                             break;
@@ -252,6 +259,8 @@ namespace WindowMemory
                     }
                 }
                 Assert(moved, "自动恢复未实际移动测试窗口");
+                Assert(engine.ImmediateEventCount > 0, "没有收到 Windows 窗口事件");
+                Assert(response != null && response.ElapsedMilliseconds < 250, "窗口事件触发后恢复不够及时");
                 return 0;
             }
             catch
@@ -312,12 +321,13 @@ namespace WindowMemory
 
                 ConfigService config = new ConfigService(directory);
                 AppState migrated = config.Load();
-                Assert(migrated.SchemaVersion == 3 && migrated.Preferences.MinimizeToTray,
+                Assert(migrated.SchemaVersion == 4 && migrated.Preferences.MinimizeToTray,
                     "旧配置没有升级为后台托盘模式");
+                Assert(migrated.Preferences.ScanIntervalMs == 0, "旧配置没有升级为即时检测");
                 Assert(string.IsNullOrEmpty(migrated.Rules[0].Matcher.ClassName),
                     "旧的忽略标题规则没有升级为程序绑定");
                 string saved = File.ReadAllText(path);
-                Assert(saved.Contains("\"SchemaVersion\":3"), "升级后的配置没有写回磁盘");
+                Assert(saved.Contains("\"SchemaVersion\":4"), "升级后的配置没有写回磁盘");
             }
             finally
             {

@@ -10,20 +10,36 @@ namespace WindowMemory
 {
     public sealed class AutoRestoreEngine : IDisposable
     {
+        private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
+        private const uint EVENT_SYSTEM_MINIMIZEEND = 0x0017;
+        private const uint EVENT_OBJECT_SHOW = 0x8002;
+        private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+        private const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
+        private const int OBJID_WINDOW = 0;
         private readonly WindowService _windows;
         private readonly object _sync = new object();
         private readonly HashSet<string> _applied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         private Timer _timer;
+        private Timer _eventTimer;
         private List<WindowRule> _rules = new List<WindowRule>();
-        private int _interval = 700;
+        private int _interval = 1200;
+        private bool _immediate;
+        private bool _started;
         private bool _paused;
         private int _busy;
+        private int _immediateEventCount;
+        private WinEventDelegate _winEventCallback;
+        private IntPtr _foregroundHook;
+        private IntPtr _restoreHook;
+        private IntPtr _showHook;
 
         public event Action<string> StatusChanged;
+        internal int ImmediateEventCount { get { return _immediateEventCount; } }
 
         public AutoRestoreEngine(WindowService windows)
         {
             _windows = windows;
+            _eventTimer = new Timer(Scan, null, Timeout.Infinite, Timeout.Infinite);
         }
 
         public void Update(IEnumerable<WindowRule> rules, int interval, bool paused)
@@ -34,18 +50,69 @@ namespace WindowMemory
                 if (rules != null)
                     foreach (WindowRule rule in rules)
                         _rules.Add(rule.Clone());
-                _interval = Math.Max(250, Math.Min(5000, interval));
+                _immediate = interval == 0;
+                _interval = _immediate ? 1200 : Math.Max(250, Math.Min(5000, interval));
                 _paused = paused;
                 // 规则或目标位置更新后，允许当前已打开的窗口立即重新应用。
                 _applied.Clear();
             }
             if (_timer != null) _timer.Change(_interval, _interval);
+            if (_started) ConfigureImmediateHooks();
         }
 
         public void Start()
         {
             if (_timer != null) return;
+            _started = true;
             _timer = new Timer(Scan, null, _interval, _interval);
+            ConfigureImmediateHooks();
+            if (_immediate) RequestImmediateScan();
+        }
+
+        private void ConfigureImmediateHooks()
+        {
+            if (!_immediate)
+            {
+                ReleaseImmediateHooks();
+                return;
+            }
+            if (_winEventCallback == null) _winEventCallback = OnWindowEvent;
+            const uint flags = WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS;
+            if (_foregroundHook == IntPtr.Zero)
+                _foregroundHook = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
+                    IntPtr.Zero, _winEventCallback, 0, 0, flags);
+            if (_restoreHook == IntPtr.Zero)
+                _restoreHook = SetWinEventHook(EVENT_SYSTEM_MINIMIZEEND, EVENT_SYSTEM_MINIMIZEEND,
+                    IntPtr.Zero, _winEventCallback, 0, 0, flags);
+            if (_showHook == IntPtr.Zero)
+                _showHook = SetWinEventHook(EVENT_OBJECT_SHOW, EVENT_OBJECT_SHOW,
+                    IntPtr.Zero, _winEventCallback, 0, 0, flags);
+            if (_foregroundHook == IntPtr.Zero || _restoreHook == IntPtr.Zero || _showHook == IntPtr.Zero)
+                RaiseStatus("即时检测未完全启用，已保留 1.2 s 兜底扫描");
+        }
+
+        private void OnWindowEvent(IntPtr hook, uint eventType, IntPtr hwnd, int objectId, int childId,
+            uint eventThread, uint eventTime)
+        {
+            if (hwnd == IntPtr.Zero) return;
+            if (eventType == EVENT_OBJECT_SHOW && (objectId != OBJID_WINDOW || childId != 0)) return;
+            bool paused;
+            lock (_sync) paused = _paused;
+            if (paused) return;
+            Interlocked.Increment(ref _immediateEventCount);
+            RequestImmediateScan();
+        }
+
+        private void RequestImmediateScan()
+        {
+            if (_eventTimer != null) _eventTimer.Change(15, Timeout.Infinite);
+        }
+
+        private void ReleaseImmediateHooks()
+        {
+            if (_foregroundHook != IntPtr.Zero) { UnhookWinEvent(_foregroundHook); _foregroundHook = IntPtr.Zero; }
+            if (_restoreHook != IntPtr.Zero) { UnhookWinEvent(_restoreHook); _restoreHook = IntPtr.Zero; }
+            if (_showHook != IntPtr.Zero) { UnhookWinEvent(_showHook); _showHook = IntPtr.Zero; }
         }
 
         private void Scan(object state)
@@ -140,9 +207,23 @@ namespace WindowMemory
 
         public void Dispose()
         {
+            _started = false;
+            ReleaseImmediateHooks();
             if (_timer != null) _timer.Dispose();
             _timer = null;
+            if (_eventTimer != null) _eventTimer.Dispose();
+            _eventTimer = null;
         }
+
+        private delegate void WinEventDelegate(IntPtr hook, uint eventType, IntPtr hwnd, int objectId,
+            int childId, uint eventThread, uint eventTime);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SetWinEventHook(uint eventMin, uint eventMax, IntPtr module,
+            WinEventDelegate callback, uint processId, uint threadId, uint flags);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool UnhookWinEvent(IntPtr hook);
     }
 
     public sealed class HotkeyService : IDisposable

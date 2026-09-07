@@ -25,7 +25,7 @@ namespace WindowMemory
 
         public AppState()
         {
-            SchemaVersion = 3;
+            SchemaVersion = 4;
             Preferences = new AppPreferences();
             Rules = new List<WindowRule>();
             Layouts = new List<LayoutProfile>();
@@ -44,7 +44,7 @@ namespace WindowMemory
         public AppPreferences()
         {
             CaptureHotkey = "Ctrl+Alt+Z";
-            ScanIntervalMs = 700;
+            ScanIntervalMs = 0;
             MinimizeToTray = true;
             AutoStart = false;
             AutoRestorePaused = false;
